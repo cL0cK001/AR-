@@ -1,0 +1,14 @@
+# データベース設定ファイル
+config.php
+.env
+
+# Composer (PHPライブラリ管理)
+/vendor/
+composer.lock
+
+# ユーザーがアップロードするフォルダ
+/uploads/
+
+# OSが自動生成するファイル
+.DS_Store
+Thumbs.db

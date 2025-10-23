@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARアニメーション選択</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ARコンテナとメニューを全画面表示にするための基本スタイル */
+    body, html {
+      margin: 0;
+      padding: 0; /* ズレ防止のため追加 */
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      box-sizing: border-box;
+    }
+    
+    /* 2つのメインコンテナにもマージン・パディングのリセットを適用 */
+    #ar-container, #selection-menu {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* AR表示関連の要素を強制的に左上に固定し、全画面にする */
+    a-scene[embedded] {
+      width: 100% !important;
+      height: 100% !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      z-index: 1; /* 基準 */
+    }
+
+    .a-canvas {
+      width: 100% !important;
+      height: 100% !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      z-index: 1; /* a-scene と同じ階層に */
+    }
+
+    video {
+      object-fit: cover !important;
+      width: 100% !important;
+      height: 100% !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      z-index: -1; /* 最背面に配置 */
+    }
+
+    /* 戻るボタンの z-index を ARシーンより手前に設定 */
+    #btn-back {
+      z-index: 10 !important; /* Tailwindのz-10より優先させる */
+    }
+  </style>
+</head>
+<body class="bg-black">
+  <div id="selection-menu" class="flex flex-col items-center justify-center p-8 space-y-6 bg-gray-100">
+    <h1 class="text-3xl font-bold text-gray-800 mb-4">ARアニメーションを選択</h1>
+    <button id="btn-left" data-type="left" class="w-full max-w-sm p-4 bg-blue-500 text-white rounded-lg shadow-md text-lg font-semibold hover:bg-blue-600 transition duration-200">
+      左に行く
+    </button>
+    <button id="btn-right" data-type="right" class="w-full max-w-sm p-4 bg-green-500 text-white rounded-lg shadow-md text-lg font-semibold hover:bg-green-600 transition duration-200">
+      右に行く
+    </button>
+    <button id="btn-approach" data-type="approach" class="w-full max-w-sm p-4 bg-yellow-500 text-white rounded-lg shadow-md text-lg font-semibold hover:bg-yellow-600 transition duration-200">
+      近づく
+    </button>
+    <button id="btn-away" data-type="away" class="w-full max-w-sm p-4 bg-red-500 text-white rounded-lg shadow-md text-lg font-semibold hover:bg-red-600 transition duration-200">
+      遠ざかる
+    </button>
+  </div>
+
+  <div id="ar-container" class="hidden relative">
+
+  <a-scene embedded
+             arjs="sourceType: webcam;
+                   debugUIEnabled: false;
+                   sourceParameters: {
+                     video: {
+                       width: { ideal: 1280 },
+                       height: { ideal: 960 },
+                       facingMode: { ideal: 'environment' }
+                     }
+                   }">
+      <a-marker id="marker" type="pattern" url="pattern-Cat.patt">
+        </a-marker>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+
+    <button id="btn-back" class="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 p-3 bg-gray-800 text-white rounded-lg shadow-lg hover:bg-gray-900 transition duration-200">
+      メニューに戻る
+    </button>
+    
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 必要なHTML要素を取得
+      const menu = document.getElementById('selection-menu');
+      const arContainer = document.getElementById('ar-container');
+      const marker = document.getElementById('marker');
+      const backButton = document.getElementById('btn-back');
+      
+      // 選択ボタン（左、右、近づく、遠ざかる）にイベントリスナーを設定
+      const selectionButtons = document.querySelectorAll('#selection-menu button');
+
+      selectionButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const animationType = button.getAttribute('data-type');
+          startAR(animationType);
+        });
+      });
+
+      // 「メニューに戻る」ボタンの処理
+      backButton.addEventListener('click', () => {
+        showMenu();
+      });
+
+      /**
+       * ARシーンを開始する関数
+       * @param {string} type - 'left', 'right', 'approach', 'away' のいずれか
+       */
+      function startAR(type) {
+        // 既存のモデルがあれば削除（メニューに戻って再選択した場合のため）
+        const existingModel = document.getElementById('current-model');
+        if (existingModel) {
+          marker.removeChild(existingModel);
+        }
+
+        // 新しいモデルエンティティを作成
+        const model = document.createElement('a-entity');
+        model.setAttribute('id', 'current-model'); // 後で削除できるようにIDを付与
+        
+        
+        model.setAttribute('gltf-model', 'bird3.glb'); //モデル選択
+        
+
+        // 選択されたタイプに応じて、アニメーションや初期設定を変更
+        switch (type) {
+          case 'left'://右に移動
+            model.setAttribute('rotation', '0 0 90');
+            model.setAttribute('scale', '3 3 3');
+            model.setAttribute('animation', {
+              property: 'position',
+              from: '0 0 0',
+              to: '-5 0 0', 
+              dur: 4000,
+              dir: 'normal',
+              loop: true
+            });
+            break;
+            
+          case 'right'://左に移動
+            model.setAttribute('rotation', '0 0 -90');
+            model.setAttribute('scale', '3 3 3');
+            model.setAttribute('animation', {
+              property: 'position',
+              from: '0 0 0',
+              to: '5 0 0', 
+              dur: 4000,
+              dir: 'normal',
+              loop: true
+            });
+            break;
+
+          case 'approach':
+            model.setAttribute('rotation', '0 0 0');
+            model.setAttribute('scale', '1 1 1'); // 初期スケール
+            model.setAttribute('animation', {
+              property: 'scale',
+              from: '1 1 1',
+              to: '10 10 10',
+              dur: 15000,
+              loop: false //近づき終わったらそこで止まる
+            });
+            break;
+
+          case 'away':
+            model.setAttribute('rotation', '0 0 180'); // 遠ざかるように向きを変更
+            model.setAttribute('scale', '10 10 10'); // 初期スケール
+            model.setAttribute('animation', {
+              property: 'scale',
+              from: '10 10 10',
+              to: '1 1 1',
+              dur: 20000,
+              loop: false // 遠ざかり終わったらそこで止まる
+            });
+            break;
+        }
+
+        // 準備したモデルをマーカーの子要素として追加
+        marker.appendChild(model);
+
+        // 画面を切り替え（メニューを隠し、ARコンテナを表示）
+        menu.classList.add('hidden');
+        arContainer.classList.remove('hidden');
+
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+      }
+
+      /**
+       * メニュー画面に戻る関数
+       */
+      function showMenu() {
+        // ARコンテナを隠し、メニューを表示
+        arContainer.classList.add('hidden');
+        menu.classList.remove('hidden');
+
+        // 表示されていたモデルをマーカーから削除
+        const existingModel = document.getElementById('current-model');
+        if (existingModel) {
+          marker.removeChild(existingModel);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
