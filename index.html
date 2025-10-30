@@ -124,38 +124,35 @@
       const marker = document.getElementById('marker');
       const backButton = document.getElementById('btn-back');
       const txtDisplay = document.getElementById('txt');
-      const requestPermissionBtn = document.getElementById('requestPermissionBtn');
-      // ローカルストレージから許可状態を確認
-const gyroPermissionGranted = localStorage.getItem('gyroPermissionGranted');
 
+      // センサーデータの格納用変数
+      let alpha = 0, beta = 0, gamma = 0;
 
-
-  // -----------------------------------------------------------------
-      // ★ 1. ジャイロセンサー (安全な 'deviceorientation' に戻します)
       // -----------------------------------------------------------------
-      window.addEventListener("deviceorientation", (dat) => {
-          
+      // ★ 1. ジャイロのリスナー関数をここで定義 (後で追加・削除するため)
+      // -----------------------------------------------------------------
+      const gyroListener = (dat) => {
           if (dat.absolute === true) {
-            // 【絶対モード】0度が北 (許可が取れていれば)
+            // 【絶対モード】
             alpha = dat.alpha;
             beta = dat.beta;
             gamma = dat.gamma;
           } else {
-            // 【相対モード】起動時が0度 (許可がないか、HTTPSでない場合)
+            // 【相対モード】
             alpha = dat.alpha;
             beta = dat.beta;
             gamma = dat.gamma;
           }
-
           // ARコンテナが表示されている時だけデータを更新
           if (txtDisplay && !arContainer.classList.contains('hidden')) {
               displayData();
           }
-      }, true);
+      };
       
-      // 選択ボタン（左、右、近づく、遠ざかる）にイベントリスナーを設定
-      const selectionButtons = document.querySelectorAll('#selection-menu button');
+      // ★ 2. ページ読み込み時(DOMContentLoaded)にリスナーを登録するのを削除します
 
+      // 選択ボタンにイベントリスナーを設定
+      const selectionButtons = document.querySelectorAll('#selection-menu button');
       selectionButtons.forEach(button => {
         button.addEventListener('click', () => {
           const animationType = button.getAttribute('data-type');
@@ -170,83 +167,80 @@ const gyroPermissionGranted = localStorage.getItem('gyroPermissionGranted');
 
       /**
        * ARシーンを開始する関数
-       * @param {string} type - 'left', 'right', 'approach', 'away' のいずれか
        */
       async function startAR(type) {
 
-        // 既存のモデルがあれば削除（メニューに戻って再選択した場合のため）
+        // -----------------------------------------------------------------
+        // ★ 3. センサー許可リクエスト
+        // -----------------------------------------------------------------
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          try {
+            const permissionState = await DeviceOrientationEvent.requestPermission(); 
+            
+            if (permissionState === 'granted') {
+              // ★ 4. 【重要】許可が得られたので、"今" リスナーを登録する
+              window.addEventListener("deviceorientation", gyroListener, true);
+              
+              // 念のためモーションも許可
+              if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                await DeviceMotionEvent.requestPermission();
+              }
+            } else {
+              // 許可されなかった場合
+              alert('「向きセンサー」の利用が許可されませんでした。');
+            }
+          } catch (error) {
+            console.error('センサーの許可リクエスト中にエラー:', error);
+          }
+        }
+        // -----------------------------------------------------------------
+
+        // (モデルの作成とアニメーション設定は変更なし)
         const existingModel = document.getElementById('current-model');
         if (existingModel) {
           marker.removeChild(existingModel);
         }
-
-        // 新しいモデルエンティティを作成
         const model = document.createElement('a-entity');
-        model.setAttribute('id', 'current-model'); // 後で削除できるようにIDを付与
-        
-        
-        model.setAttribute('gltf-model', 'bird3.glb'); //モデル選択
-
-        model.setAttribute('animation-mixer', {}); //アニメーション再生するためのもの
-        
-
-        // 選択されたタイプに応じて、アニメーションや初期設定を変更
+        model.setAttribute('id', 'current-model');
+        model.setAttribute('gltf-model', 'birditi.glb'); 
+        model.setAttribute('animation-mixer', {}); 
         switch (type) {
-          case 'left'://右に移動
+          case 'left':
             model.setAttribute('rotation', '90 -90 180');
             model.setAttribute('scale', '3 3 3');
             model.setAttribute('animation', {
-                property: 'position',
-                from: '0 0 0',
-                to: '-5 0 0', 
-                dur: 4000,
-                dir: 'normal',
-                loop: true
+                property: 'position', from: '0 0 0', to: '-5 0 0', 
+                dur: 4000, dir: 'normal', loop: true
             });
             break;
-            
-          case 'right'://左に移動
+          case 'right':
             model.setAttribute('rotation', '90 90 180');
             model.setAttribute('scale', '3 3 3');
             model.setAttribute('animation', {
-              property: 'position',
-              from: '0 0 0',
-              to: '5 0 0', 
-              dur: 4000,
-              dir: 'normal',
-              loop: true
+              property: 'position', from: '0 0 0', to: '5 0 0', 
+              dur: 4000, dir: 'normal', loop: true
             });
             break;
-
           case 'approach':
             model.setAttribute('rotation', '-90 0 0');
-            model.setAttribute('scale', '1 1 1'); // 初期スケール
+            model.setAttribute('scale', '1 1 1'); 
             model.setAttribute('animation', {
-              property: 'scale',
-              from: '1 1 1',
-              to: '10 10 10',
-              dur: 15000,
-              loop: false //近づき終わったらそこで止まる
+              property: 'scale', from: '1 1 1', to: '10 10 10',
+              dur: 15000, loop: false
             });
             break;
-
           case 'away':
-            model.setAttribute('rotation', '90 0 180'); // 遠ざかるように向きを変更
-            model.setAttribute('scale', '10 10 10'); // 初期スケール
+            model.setAttribute('rotation', '90 0 180');
+            model.setAttribute('scale', '10 10 10'); 
             model.setAttribute('animation', {
-              property: 'scale',
-              from: '10 10 10',
-              to: '1 1 1',
-              dur: 20000,
-              loop: false // 遠ざかり終わったらそこで止まる
+              property: 'scale', from: '10 10 10', to: '1 1 1',
+              dur: 20000, loop: false
             });
             break;
         }
-
-        // 準備したモデルをマーカーの子要素として追加
         marker.appendChild(model);
 
-        // 画面を切り替え（メニューを隠し、ARコンテナを表示）
+        // 画面を切り替え
         menu.classList.add('hidden');
         arContainer.classList.remove('hidden');
 
@@ -257,22 +251,30 @@ const gyroPermissionGranted = localStorage.getItem('gyroPermissionGranted');
        * メニュー画面に戻る関数
        */
       function showMenu() {
-        // ARコンテナを隠し、メニューを表示
         arContainer.classList.add('hidden');
         menu.classList.remove('hidden');
 
-        // 表示されていたモデルをマーカーから削除
         const existingModel = document.getElementById('current-model');
         if (existingModel) {
           marker.removeChild(existingModel);
         }
+        
+        // ★ 5. AR終了時にリスナーを削除 (バッテリー節約)
+        window.removeEventListener("deviceorientation", gyroListener, true);
+        
+        if (txtDisplay) {
+          txtDisplay.innerHTML = "";
+        }
       }
 
+      /**
+       * センサーデータを画面に表示する関数
+       */
       function displayData() {
         if(txtDisplay) {
           txtDisplay.innerHTML = "alpha: " + Math.round(alpha) + "<br>"
-                             + "beta:  " + Math.round(beta)  + "<br>"
-                             + "gamma: " + Math.round(gamma);
+                               + "beta:  " + Math.round(beta)  + "<br>"
+                               + "gamma: " + Math.round(gamma);
         }
       }
     });
