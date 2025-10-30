@@ -118,40 +118,46 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      // 必要なHTML要素を取得
       const menu = document.getElementById('selection-menu');
       const arContainer = document.getElementById('ar-container');
       const marker = document.getElementById('marker');
       const backButton = document.getElementById('btn-back');
       const txtDisplay = document.getElementById('txt');
 
-      // センサーデータの格納用変数
       let alpha = 0, beta = 0, gamma = 0;
+      
+      // ★ イベントが絶対モード（true）か相対モード（false）かを記録するフラグ
+      let isAbsoluteMode = false;
 
       // -----------------------------------------------------------------
-      // ★ 1. ジャイロのリスナー関数をここで定義 (後で追加・削除するため)
+      // ★ 1. ジャイロのリスナー関数を定義
       // -----------------------------------------------------------------
-      const gyroListener = (dat) => {
-          if (dat.absolute === true) {
-            // 【絶対モード】
-            alpha = dat.alpha;
-            beta = dat.beta;
-            gamma = dat.gamma;
-          } else {
-            // 【相対モード】
-            alpha = dat.alpha;
-            beta = dat.beta;
-            gamma = dat.gamma;
-          }
-          // ARコンテナが表示されている時だけデータを更新
+      
+      // ★ 絶対モード専用のリスナー
+      const gyroAbsoluteListener = (dat) => {
+          isAbsoluteMode = true; // 絶対モードが機能したことを記録
+          alpha = dat.alpha;
+          beta = dat.beta;
+          gamma = dat.gamma;
           if (txtDisplay && !arContainer.classList.contains('hidden')) {
               displayData();
           }
       };
       
-      // ★ 2. ページ読み込み時(DOMContentLoaded)にリスナーを登録するのを削除します
-
-      // 選択ボタンにイベントリスナーを設定
+      // ★ 相対モード専用のリスナー (フォールバック用)
+      const gyroRelativeListener = (dat) => {
+          // 絶対モードがまだ機能していない場合のみ、相対モードの値を使用
+          if (!isAbsoluteMode) { 
+              alpha = dat.alpha;
+              beta = dat.beta;
+              gamma = dat.gamma;
+              if (txtDisplay && !arContainer.classList.contains('hidden')) {
+                  displayData();
+              }
+          }
+      };
+      
+      // (選択ボタンと戻るボタンのリスナー設定は変更なし)
       const selectionButtons = document.querySelectorAll('#selection-menu button');
       selectionButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -159,34 +165,37 @@
           startAR(animationType);
         });
       });
-
-      // 「メニューに戻る」ボタンの処理
       backButton.addEventListener('click', () => {
         showMenu();
       });
+
 
       /**
        * ARシーンを開始する関数
        */
       async function startAR(type) {
 
+        // ★ リセット
+        isAbsoluteMode = false; 
+
         // -----------------------------------------------------------------
-        // ★ 3. センサー許可リクエスト
+        // ★ 2. センサー許可リクエスト
         // -----------------------------------------------------------------
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
           try {
             const permissionState = await DeviceOrientationEvent.requestPermission(); 
             
             if (permissionState === 'granted') {
-              // ★ 4. 【重要】許可が得られたので、"今" リスナーを登録する
-              window.addEventListener("deviceorientation", gyroListener, true);
+              // ★ 3. 【重要】両方のイベントリスナーを登録する
+              // (絶対モードが利用可能なら gyroAbsoluteListener が呼ばれる)
+              window.addEventListener("deviceorientationabsolute", gyroAbsoluteListener, true);
+              // (絶対モードがダメな場合のフォールバックとして、相対モードも登録)
+              window.addEventListener("deviceorientation", gyroRelativeListener, true);
               
-              // 念のためモーションも許可
               if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 await DeviceMotionEvent.requestPermission();
               }
             } else {
-              // 許可されなかった場合
               alert('「向きセンサー」の利用が許可されませんでした。');
             }
           } catch (error) {
@@ -239,11 +248,8 @@
             break;
         }
         marker.appendChild(model);
-
-        // 画面を切り替え
         menu.classList.add('hidden');
         arContainer.classList.remove('hidden');
-
         setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
       }
 
@@ -259,8 +265,9 @@
           marker.removeChild(existingModel);
         }
         
-        // ★ 5. AR終了時にリスナーを削除 (バッテリー節約)
-        window.removeEventListener("deviceorientation", gyroListener, true);
+        // ★ 4. 両方のリスナーを削除
+        window.removeEventListener("deviceorientationabsolute", gyroAbsoluteListener, true);
+        window.removeEventListener("deviceorientation", gyroRelativeListener, true);
         
         if (txtDisplay) {
           txtDisplay.innerHTML = "";
@@ -272,9 +279,13 @@
        */
       function displayData() {
         if(txtDisplay) {
-          txtDisplay.innerHTML = "alpha: " + Math.round(alpha) + "<br>"
-                               + "beta:  " + Math.round(beta)  + "<br>"
-                               + "gamma: " + Math.round(gamma);
+          // ★ 絶対モード(true)か相対モード(false)かを表示
+          const mode = isAbsoluteMode ? "絶対 (北=0°)" : "相対 (起動時=0°)";
+          
+          txtDisplay.innerHTML = "<b>モード: " + mode + "</b><br>"
+                               + "alpha (Z軸/方位): " + Math.round(alpha) + "°<br>"
+                               + "beta (X軸/前後):  " + Math.round(beta) + "°<br>"
+                               + "gamma (Y軸/左右): " + Math.round(gamma) + "°";
         }
       }
     });
