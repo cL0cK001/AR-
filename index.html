@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -7,6 +8,9 @@
   <script src="aframe.min.js"></script>
   <script src="aframe-ar.js"></script>
   <script src="cdn.tailwindcss.com"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.3.1/aframe/build/aframe-ar-nft.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+
   <style>
     /* ARコンテナとメニューを全画面表示にするための基本スタイル */
     body, html {
@@ -97,11 +101,14 @@
                        facingMode: { ideal: 'environment' }
                      }
                    }">
-      <a-marker id="marker" type="pattern" url="pattern-Cat.patt">
+      <a-marker id="marker" type="pattern" url="AR-marker.patt">
+      <a-entity gltf-model="#walking" animation-mixer></a-entity>
         </a-marker>
 
       <a-entity camera></a-entity>
     </a-scene>
+    <div id="txt" style="position: fixed; bottom: 1rem; left: 1rem; z-index: 10; padding: 0.5rem; background-color: rgba(0,0,0,0.5); color: white; border-radius: 0.5rem; font-size: 0.875rem;">
+      </div>
 
     <button id="btn-back" class="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 p-3 bg-gray-800 text-white rounded-lg shadow-lg hover:bg-gray-900 transition duration-200">
       メニューに戻る
@@ -116,6 +123,35 @@
       const arContainer = document.getElementById('ar-container');
       const marker = document.getElementById('marker');
       const backButton = document.getElementById('btn-back');
+      const txtDisplay = document.getElementById('txt');
+      const requestPermissionBtn = document.getElementById('requestPermissionBtn');
+      // ローカルストレージから許可状態を確認
+const gyroPermissionGranted = localStorage.getItem('gyroPermissionGranted');
+
+
+
+  // -----------------------------------------------------------------
+      // ★ 1. ジャイロセンサー (安全な 'deviceorientation' に戻します)
+      // -----------------------------------------------------------------
+      window.addEventListener("deviceorientation", (dat) => {
+          
+          if (dat.absolute === true) {
+            // 【絶対モード】0度が北 (許可が取れていれば)
+            alpha = dat.alpha;
+            beta = dat.beta;
+            gamma = dat.gamma;
+          } else {
+            // 【相対モード】起動時が0度 (許可がないか、HTTPSでない場合)
+            alpha = dat.alpha;
+            beta = dat.beta;
+            gamma = dat.gamma;
+          }
+
+          // ARコンテナが表示されている時だけデータを更新
+          if (txtDisplay && !arContainer.classList.contains('hidden')) {
+              displayData();
+          }
+      }, true);
       
       // 選択ボタン（左、右、近づく、遠ざかる）にイベントリスナーを設定
       const selectionButtons = document.querySelectorAll('#selection-menu button');
@@ -136,7 +172,8 @@
        * ARシーンを開始する関数
        * @param {string} type - 'left', 'right', 'approach', 'away' のいずれか
        */
-      function startAR(type) {
+      async function startAR(type) {
+
         // 既存のモデルがあれば削除（メニューに戻って再選択した場合のため）
         const existingModel = document.getElementById('current-model');
         if (existingModel) {
@@ -149,25 +186,27 @@
         
         
         model.setAttribute('gltf-model', 'bird3.glb'); //モデル選択
+
+        model.setAttribute('animation-mixer', {}); //アニメーション再生するためのもの
         
 
         // 選択されたタイプに応じて、アニメーションや初期設定を変更
         switch (type) {
           case 'left'://右に移動
-            model.setAttribute('rotation', '0 0 90');
+            model.setAttribute('rotation', '90 -90 180');
             model.setAttribute('scale', '3 3 3');
             model.setAttribute('animation', {
-              property: 'position',
-              from: '0 0 0',
-              to: '-5 0 0', 
-              dur: 4000,
-              dir: 'normal',
-              loop: true
+                property: 'position',
+                from: '0 0 0',
+                to: '-5 0 0', 
+                dur: 4000,
+                dir: 'normal',
+                loop: true
             });
             break;
             
           case 'right'://左に移動
-            model.setAttribute('rotation', '0 0 -90');
+            model.setAttribute('rotation', '90 90 180');
             model.setAttribute('scale', '3 3 3');
             model.setAttribute('animation', {
               property: 'position',
@@ -180,7 +219,7 @@
             break;
 
           case 'approach':
-            model.setAttribute('rotation', '0 0 0');
+            model.setAttribute('rotation', '-90 0 0');
             model.setAttribute('scale', '1 1 1'); // 初期スケール
             model.setAttribute('animation', {
               property: 'scale',
@@ -192,7 +231,7 @@
             break;
 
           case 'away':
-            model.setAttribute('rotation', '0 0 180'); // 遠ざかるように向きを変更
+            model.setAttribute('rotation', '90 0 180'); // 遠ざかるように向きを変更
             model.setAttribute('scale', '10 10 10'); // 初期スケール
             model.setAttribute('animation', {
               property: 'scale',
@@ -226,6 +265,14 @@
         const existingModel = document.getElementById('current-model');
         if (existingModel) {
           marker.removeChild(existingModel);
+        }
+      }
+
+      function displayData() {
+        if(txtDisplay) {
+          txtDisplay.innerHTML = "alpha: " + Math.round(alpha) + "<br>"
+                             + "beta:  " + Math.round(beta)  + "<br>"
+                             + "gamma: " + Math.round(gamma);
         }
       }
     });
