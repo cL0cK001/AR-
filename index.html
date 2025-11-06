@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -110,54 +109,54 @@
     <div id="txt" style="position: fixed; bottom: 1rem; left: 1rem; z-index: 10; padding: 0.5rem; background-color: rgba(0,0,0,0.5); color: white; border-radius: 0.5rem; font-size: 0.875rem;">
       </div>
 
-    <button id="btn-back" class="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 p-3 bg-gray-800 text-white rounded-lg shadow-lg hover:bg-gray-900 transition duration-200">
-      メニューに戻る
-    </button>
+ <button id="btn-back" class="fixed bottom-6 z-10 p-3 bg-gray-800 text-white rounded-lg shadow-lg hover:bg-gray-900 transition duration-200" style="right: 10px;">
+      メニューに戻る
+    </button>
     
   </div>
 
-  <script>
+ <script>
     document.addEventListener('DOMContentLoaded', () => {
+      // 必要なHTML要素を取得
       const menu = document.getElementById('selection-menu');
       const arContainer = document.getElementById('ar-container');
       const marker = document.getElementById('marker');
       const backButton = document.getElementById('btn-back');
       const txtDisplay = document.getElementById('txt');
 
+      // センサーデータの格納用変数
       let alpha = 0, beta = 0, gamma = 0;
       
-      // ★ イベントが絶対モード（true）か相対モード（false）かを記録するフラグ
-      let isAbsoluteMode = false;
+      // ★ 現在のアニメーション状態 ('approach', 'away', 'left', 'right', または '')
+      let currentMode = ''; 
+      // ★ 状態が切り替わったか判定するための変数
+      let lastAnimationType = '';
 
       // -----------------------------------------------------------------
-      // ★ 1. ジャイロのリスナー関数を定義
+      // ★ 1. 新しいロジックのイベントリスナー関数を定義
       // -----------------------------------------------------------------
-      
-      // ★ 絶対モード専用のリスナー
-      const gyroAbsoluteListener = (dat) => {
-          isAbsoluteMode = true; // 絶対モードが機能したことを記録
-          alpha = dat.alpha;
-          beta = dat.beta;
-          gamma = dat.gamma;
+      const gyroListener = (event) => {
+          beta = event.beta;
+          gamma = event.gamma;
+
+          if (event.webkitCompassHeading !== undefined) {
+              alpha = event.webkitCompassHeading; // iOS
+          } 
+          else if (event.alpha !== null) {
+              alpha = (360 - event.alpha + 360) % 360; // Android
+          }
+
           if (txtDisplay && !arContainer.classList.contains('hidden')) {
               displayData();
-          }
-      };
-      
-      // ★ 相対モード専用のリスナー (フォールバック用)
-      const gyroRelativeListener = (dat) => {
-          // 絶対モードがまだ機能していない場合のみ、相対モードの値を使用
-          if (!isAbsoluteMode) { 
-              alpha = dat.alpha;
-              beta = dat.beta;
-              gamma = dat.gamma;
-              if (txtDisplay && !arContainer.classList.contains('hidden')) {
-                  displayData();
+              
+              // ★ 2. 'approach' か 'away' モードの時だけ、ジャイロでアニメーションをチェック
+              if (currentMode === 'approach' || currentMode === 'away') {
+                checkGyroAnimation(alpha);
               }
           }
       };
-      
-      // (選択ボタンと戻るボタンのリスナー設定は変更なし)
+
+      // 選択ボタンにイベントリスナーを設定
       const selectionButtons = document.querySelectorAll('#selection-menu button');
       selectionButtons.forEach(button => {
         button.addEventListener('click', () => {
@@ -165,33 +164,28 @@
           startAR(animationType);
         });
       });
+
+      // 「メニューに戻る」ボタンの処理
       backButton.addEventListener('click', () => {
         showMenu();
       });
-
 
       /**
        * ARシーンを開始する関数
        */
       async function startAR(type) {
 
-        // ★ リセット
-        isAbsoluteMode = false; 
+        // ★ 3. どのモードで開始したか保存
+        currentMode = type;
+        lastAnimationType = ''; // 状態をリセット
 
-        // -----------------------------------------------------------------
-        // ★ 2. センサー許可リクエスト
-        // -----------------------------------------------------------------
+        // (センサー許可リクエストは変更なし)
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
           try {
             const permissionState = await DeviceOrientationEvent.requestPermission(); 
-            
             if (permissionState === 'granted') {
-              // ★ 3. 【重要】両方のイベントリスナーを登録する
-              // (絶対モードが利用可能なら gyroAbsoluteListener が呼ばれる)
-              window.addEventListener("deviceorientationabsolute", gyroAbsoluteListener, true);
-              // (絶対モードがダメな場合のフォールバックとして、相対モードも登録)
-              window.addEventListener("deviceorientation", gyroRelativeListener, true);
-              
+              window.addEventListener("deviceorientationabsolute", gyroListener, true);
+              window.addEventListener("deviceorientation", gyroListener, true);
               if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 await DeviceMotionEvent.requestPermission();
               }
@@ -202,9 +196,8 @@
             console.error('センサーの許可リクエスト中にエラー:', error);
           }
         }
-        // -----------------------------------------------------------------
-
-        // (モデルの作成とアニメーション設定は変更なし)
+        
+        // (モデルの作成)
         const existingModel = document.getElementById('current-model');
         if (existingModel) {
           marker.removeChild(existingModel);
@@ -213,6 +206,10 @@
         model.setAttribute('id', 'current-model');
         model.setAttribute('gltf-model', 'birditi.glb'); 
         model.setAttribute('animation-mixer', {}); 
+
+        // -----------------------------------------------------------------
+        // ★ 4. switch文を修正
+        // -----------------------------------------------------------------
         switch (type) {
           case 'left':
             model.setAttribute('rotation', '90 -90 180');
@@ -222,6 +219,7 @@
                 dur: 4000, dir: 'normal', loop: true
             });
             break;
+            
           case 'right':
             model.setAttribute('rotation', '90 90 180');
             model.setAttribute('scale', '3 3 3');
@@ -230,27 +228,64 @@
               dur: 4000, dir: 'normal', loop: true
             });
             break;
+
           case 'approach':
-            model.setAttribute('rotation', '-90 0 0');
-            model.setAttribute('scale', '1 1 1'); 
-            model.setAttribute('animation', {
-              property: 'scale', from: '1 1 1', to: '10 10 10',
-              dur: 15000, loop: false
-            });
-            break;
           case 'away':
-            model.setAttribute('rotation', '90 0 180');
-            model.setAttribute('scale', '10 10 10'); 
-            model.setAttribute('animation', {
-              property: 'scale', from: '10 10 10', to: '1 1 1',
-              dur: 20000, loop: false
-            });
+            // ★ 'approach' か 'away' が押されたら、ジャイロによる自動切り替えを開始
+            // ★ 初期状態をセットするため、checkGyroAnimationを1回呼び出す
+            checkGyroAnimation(alpha); 
             break;
         }
+        // -----------------------------------------------------------------
+
         marker.appendChild(model);
         menu.classList.add('hidden');
         arContainer.classList.remove('hidden');
+
+        // ★ リサイズ問題の対策
         setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+      }
+
+      // -----------------------------------------------------------------
+      // ★ 5. ジャイロでアニメーションを切り替える新関数
+      // -----------------------------------------------------------------
+      function checkGyroAnimation(currentAlpha) {
+        const model = document.getElementById('current-model');
+        if (!model) return; // モデルがなければ何もしない
+
+        let newAnimationType = '';
+
+        // ★ ユーザー様のロジックをここに実装
+        // 60〜150 は "away"
+        if (currentAlpha >= 60 && currentAlpha < 150) { // ユーザーの条件だと150もaway
+            newAnimationType = 'away';
+        } else {
+            // それ以外 (150〜360, 0〜60) は "approach"
+            newAnimationType = 'approach';
+        }
+        
+        // ★ 状態が変更された場合のみ、アニメーションを再設定 (パフォーマンスのため)
+        if (newAnimationType !== lastAnimationType) {
+            lastAnimationType = newAnimationType;
+            
+            if (newAnimationType === 'approach') {
+                // "近づく" アニメーション
+                model.setAttribute('rotation', '-90 0 0');
+                model.setAttribute('scale', '1 1 1'); 
+                model.setAttribute('animation', {
+                  property: 'scale', from: '1 1 1', to: '20 20 20',
+                  dur: 10000, loop: false
+                });
+            } else { // 'away'
+                // "遠ざかる" アニメーション
+                model.setAttribute('rotation', '90 0 180');
+                model.setAttribute('scale', '10 10 10'); 
+                model.setAttribute('animation', {
+                  property: 'scale', from: '5 5 5', to: '1 1 1',
+                  dur: 20000, loop: false
+                });
+            }
+        }
       }
 
       /**
@@ -265,9 +300,8 @@
           marker.removeChild(existingModel);
         }
         
-        // ★ 4. 両方のリスナーを削除
-        window.removeEventListener("deviceorientationabsolute", gyroAbsoluteListener, true);
-        window.removeEventListener("deviceorientation", gyroRelativeListener, true);
+        window.removeEventListener("deviceorientationabsolute", gyroListener, true);
+        window.removeEventListener("deviceorientation", gyroListener, true);
         
         if (txtDisplay) {
           txtDisplay.innerHTML = "";
@@ -279,13 +313,13 @@
        */
       function displayData() {
         if(txtDisplay) {
-          // ★ 絶対モード(true)か相対モード(false)かを表示
-          const mode = isAbsoluteMode ? "絶対 (北=0°)" : "相対 (起動時=0°)";
+          // ★ 現在のモード（押したボタン）と、ジャイロが検出したアニメーションを表示
+          let animationStatus = (currentMode === 'approach' || currentMode === 'away') ? lastAnimationType : currentMode;
           
-          txtDisplay.innerHTML = "<b>モード: " + mode + "</b><br>"
-                               + "alpha (Z軸/方位): " + Math.round(alpha) + "°<br>"
-                               + "beta (X軸/前後):  " + Math.round(beta) + "°<br>"
-                               + "gamma (Y軸/左右): " + Math.round(gamma) + "°";
+          txtDisplay.innerHTML = `<b>モード: ${animationStatus}</b><br>`
+                               + `alpha (方位): ${Math.round(alpha)}°<br>`
+                               + `beta (前後):  ${Math.round(beta)}°<br>`
+                               + `gamma (左右): ${Math.round(gamma)}°`;
         }
       }
     });
